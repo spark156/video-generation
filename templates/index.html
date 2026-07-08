@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Frameflow 视频流水线</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand-row">
+        <div class="brand-mark" aria-hidden="true">F</div>
+        <div>
+          <strong>Frameflow</strong>
+          <span>视频流水线</span>
+        </div>
+      </div>
+
+      <button class="new-job-button" id="newJobButton" type="button">
+        <span aria-hidden="true">＋</span>
+        新建任务
+      </button>
+
+      <div class="sidebar-label">任务历史</div>
+      <div class="job-list" id="jobList" aria-live="polite"></div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <div>
+          <h1>图片到视频</h1>
+          <p id="pageSubtitle">新建流水线任务</p>
+        </div>
+        <div class="browser-statuses">
+          <button class="browser-status" id="chatgptStatus" type="button" title="检查或启动 ChatGPT 浏览器">
+            <span class="status-dot"></span>
+            <span>ChatGPT</span>
+          </button>
+          <button class="browser-status" id="grokStatus" type="button" title="检查或启动 Grok 浏览器">
+            <span class="status-dot"></span>
+            <span>Grok</span>
+          </button>
+          <button class="icon-button" id="refreshStatusButton" type="button" title="刷新浏览器连接" aria-label="刷新浏览器连接">↻</button>
+        </div>
+      </header>
+
+      <div class="workspace">
+        <section class="config-panel" aria-labelledby="configTitle">
+          <div class="section-heading">
+            <h2 id="configTitle">任务设置</h2>
+            <span class="section-index">01</span>
+          </div>
+
+          <form id="jobForm">
+            <div class="form-section">
+              <span class="field-label">任务模式</span>
+              <div class="pipeline-options" id="pipelineOptions" role="radiogroup" aria-label="任务模式">
+                <label class="pipeline-option">
+                  <input type="radio" name="pipeline" value="full_video" checked>
+                  <span><strong>全流程</strong><small>生图、审核并生成视频</small></span>
+                </label>
+                <label class="pipeline-option">
+                  <input type="radio" name="pipeline" value="image_only">
+                  <span><strong>仅图片</strong><small>生图、审核与筛选</small></span>
+                </label>
+                <label class="pipeline-option">
+                  <input type="radio" name="pipeline" value="video_only">
+                  <span><strong>仅视频</strong><small>上传图片直接生成视频</small></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="form-section">
+              <label class="field-label" for="imageInput">参考图片 <span id="imageCounter">0 / 3</span></label>
+              <label class="upload-zone" id="uploadZone" for="imageInput">
+                <input id="imageInput" name="images" type="file" accept="image/png,image/jpeg,image/webp" multiple>
+                <span class="upload-plus" aria-hidden="true">＋</span>
+                <span>选择图片</span>
+              </label>
+              <div class="image-previews" id="imagePreviews"></div>
+            </div>
+
+            <div class="form-section" data-requires="chatgpt">
+              <label class="field-label" for="requestInput">图片生成诉求</label>
+              <textarea id="requestInput" rows="5" required placeholder="场景、光线、构图、真实感与尺寸要求"></textarea>
+            </div>
+
+            <div class="form-section" data-requires="grok">
+              <label class="field-label" for="videoPromptInput">视频运动要求</label>
+              <textarea id="videoPromptInput" rows="3" placeholder="镜头运动、主体动作与光线变化"></textarea>
+            </div>
+
+            <div class="form-section compact-section" data-requires="grok">
+              <div class="three-column-fields">
+                <label class="compact-field">
+                  <span>分辨率</span>
+                  <select id="resolutionInput">
+                    <option value="720p">720p</option>
+                    <option value="480p">480p</option>
+                  </select>
+                </label>
+                <label class="compact-field">
+                  <span>时长</span>
+                  <select id="durationInput">
+                    <option value="10s">10 秒</option>
+                    <option value="6s">6 秒</option>
+                    <option value="15s">15 秒</option>
+                  </select>
+                </label>
+                <label class="compact-field">
+                  <span>比例</span>
+                  <select id="aspectRatioInput">
+                    <option value="9:16">9:16</option>
+                    <option value="2:3">2:3</option>
+                    <option value="1:1">1:1</option>
+                    <option value="16:9">16:9</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div class="form-section prompt-editor-section" data-requires="chatgpt">
+              <div class="prompt-editor-heading">
+                <div>
+                  <span class="field-label">Prompt 模板</span>
+                  <p>可使用 <code>{% raw %}{{request}}{% endraw %}</code> 和 <code>{% raw %}{{count}}{% endraw %}</code> 变量，运行时会自动替换。</p>
+                </div>
+                <button class="text-button" id="resetPromptsButton" type="button">恢复默认</button>
+              </div>
+              <label class="prompt-field" for="generationPromptTemplateInput">
+                <span>图片生成 Prompt</span>
+                <textarea id="generationPromptTemplateInput" rows="10" spellcheck="false"></textarea>
+              </label>
+              <label class="prompt-field" for="evaluationPromptTemplateInput">
+                <span>图片审核 Prompt</span>
+                <textarea id="evaluationPromptTemplateInput" rows="12" spellcheck="false"></textarea>
+              </label>
+            </div>
+
+            <details class="advanced-settings">
+              <summary>高级设置</summary>
+              <div class="advanced-grid">
+                <label class="compact-field wide-field" data-requires="chatgpt">
+                  <span>ChatGPT CDP</span>
+                  <input id="chatgptCdpInput" type="url" spellcheck="false">
+                </label>
+                <label class="compact-field wide-field" data-requires="grok">
+                  <span>Grok CDP</span>
+                  <input id="grokCdpInput" type="url" spellcheck="false">
+                </label>
+                <label class="compact-field" data-requires="chatgpt">
+                  <span>候选图</span>
+                  <input id="candidateCountInput" type="number" min="1" max="8" value="4">
+                </label>
+                <label class="toggle-field" data-requires="chatgpt">
+                  <input id="partialCandidatesInput" type="checkbox">
+                  <span class="toggle-control" aria-hidden="true"></span>
+                  <span>允许部分候选图</span>
+                </label>
+                <label class="toggle-field" data-requires="grok">
+                  <input id="reuseGrokInput" type="checkbox">
+                  <span class="toggle-control" aria-hidden="true"></span>
+                  <span>复用当前 Grok 页面</span>
+                </label>
+              </div>
+            </details>
+
+            <button class="primary-button" id="startButton" type="submit">
+              <span aria-hidden="true">▶</span>
+              <span id="startButtonLabel">启动全流程</span>
+            </button>
+          </form>
+        </section>
+
+        <section class="run-panel" aria-labelledby="runTitle">
+          <div class="run-header">
+            <div>
+              <div class="run-title-row">
+                <h2 id="runTitle">运行详情</h2>
+                <span class="run-status idle" id="runStatus">待启动</span>
+              </div>
+              <p id="runMeta">选择历史任务或启动新任务</p>
+            </div>
+            <button class="danger-button hidden" id="cancelButton" type="button">
+              <span aria-hidden="true">■</span>
+              停止
+            </button>
+          </div>
+
+          <div class="stage-track" id="stageTrack"></div>
+
+          <div class="tabs" role="tablist" aria-label="任务内容">
+            <button class="tab-button active" data-tab="log" type="button" role="tab">运行日志</button>
+            <button class="tab-button" data-tab="passed" type="button" role="tab">合格图片 <span id="passedCount">0</span></button>
+            <button class="tab-button" data-tab="videos" type="button" role="tab">视频 <span id="videoCount">0</span></button>
+          </div>
+
+          <div class="tab-content active" id="logPanel" data-panel="log">
+            <pre class="log-output" id="logOutput"><span class="log-placeholder">等待任务日志</span></pre>
+          </div>
+          <div class="tab-content" id="passedPanel" data-panel="passed">
+            <div class="media-grid" id="passedGrid"></div>
+          </div>
+          <div class="tab-content" id="videosPanel" data-panel="videos">
+            <div class="video-grid" id="videoGrid"></div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

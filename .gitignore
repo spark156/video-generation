@@ -1,0 +1,26 @@
+# Browser profiles contain cookies and authenticated sessions.
+profiles/
+
+# User inputs and generated artifacts.
+images/
+runs/
+video_runs/
+web_data/
+
+# Python caches and local environments.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# IDE and OS metadata.
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local secrets and logs.
+.env
+.env.*
+*.log
