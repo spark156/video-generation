@@ -58,6 +58,14 @@ SEND_SELECTORS = [
     "button:has-text('发送')",
 ]
 
+STOP_GENERATING_SELECTORS = [
+    "button[data-testid='stop-button']",
+    "button[aria-label*='Stop']",
+    "button[aria-label*='停止']",
+    "button:has-text('Stop generating')",
+    "button:has-text('停止生成')",
+]
+
 UPLOAD_BUTTON_SELECTORS = [
     "button[aria-label*='Attach']",
     "button[aria-label*='Upload']",
@@ -534,14 +542,47 @@ def wait_for_upload_previews(page, before_srcs, expected_count, args):
     return False
 
 
+def is_generation_active(page):
+    for selector in STOP_GENERATING_SELECTORS:
+        try:
+            locator = page.locator(selector).first
+            if locator.count() > 0 and locator.is_visible(timeout=300):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def refresh_chatgpt_conversation(page):
+    current_url = page.url
+    print("候选图长时间没有更新，自动刷新当前 ChatGPT 会话: {0}".format(current_url))
+    try:
+        page.reload(wait_until="domcontentloaded", timeout=60000)
+        wait_for_prompt_box(page)
+        time.sleep(3)
+        print("ChatGPT 会话刷新完成，重新扫描生成结果。")
+        return True
+    except Exception as exc:
+        print("自动刷新失败，将继续等待并稍后重试: {0}".format(exc))
+        return False
+
+
 def wait_for_candidate_images(page, known_srcs, args, excluded_alt_names=None):
     deadline = time.time() + args.generation_timeout
     last_count = -1
     best_candidates = []
+    last_progress_at = time.time()
+    refresh_count = 0
+    idle_candidates_since = None
 
     print("自动等待候选图生成，最长等待 {0} 秒...".format(args.generation_timeout))
     while time.time() < deadline:
-        image_infos = collect_image_infos(page)
+        try:
+            image_infos = collect_image_infos(page)
+        except Exception as exc:
+            print("读取页面图片时遇到临时导航，继续重试: {0}".format(exc))
+            time.sleep(args.poll_interval)
+            continue
         candidates = filter_new_candidate_images(
             image_infos,
             known_srcs,
@@ -554,10 +595,38 @@ def wait_for_candidate_images(page, known_srcs, args, excluded_alt_names=None):
             print("检测到候选图数量: {0}".format(count))
             last_count = count
             best_candidates = candidates
+            last_progress_at = time.time()
+            idle_candidates_since = None
 
         if count >= args.expected_candidates:
             print("候选图数量已达到预期: {0}".format(count))
             return candidates
+
+        now = time.time()
+        if count > 0 and not is_generation_active(page):
+            if idle_candidates_since is None:
+                idle_candidates_since = now
+                print("ChatGPT 已结束生成，等待 {0} 秒确认现有结果稳定。".format(
+                    args.candidate_settle_seconds
+                ))
+            elif now - idle_candidates_since >= args.candidate_settle_seconds:
+                print("生成已结束，收取当前 {0} 张候选图（预期 {1} 张）。".format(
+                    count, args.expected_candidates
+                ))
+                return candidates
+        else:
+            idle_candidates_since = None
+
+        refresh_interval = max(0, args.generation_refresh_interval)
+        if (
+            refresh_interval
+            and refresh_count < args.max_generation_refreshes
+            and now - last_progress_at >= refresh_interval
+        ):
+            refresh_chatgpt_conversation(page)
+            refresh_count += 1
+            last_progress_at = time.time()
+            idle_candidates_since = None
 
         time.sleep(args.poll_interval)
 
@@ -1148,6 +1217,24 @@ def parse_args(argv):
         type=int,
         default=1200,
         help="自动模式下等待图片生成的最长秒数，默认 1200。",
+    )
+    parser.add_argument(
+        "--generation-refresh-interval",
+        type=float,
+        default=90.0,
+        help="候选图无进展时自动刷新 ChatGPT 会话的秒数，默认 90；设为 0 可关闭。",
+    )
+    parser.add_argument(
+        "--max-generation-refreshes",
+        type=int,
+        default=5,
+        help="单次任务最多自动刷新 ChatGPT 会话的次数，默认 5。",
+    )
+    parser.add_argument(
+        "--candidate-settle-seconds",
+        type=float,
+        default=12.0,
+        help="ChatGPT 已结束生成但候选图少于预期时的稳定等待秒数，默认 12。",
     )
     parser.add_argument(
         "--evaluation-timeout",

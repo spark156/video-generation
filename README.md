@@ -80,6 +80,9 @@ runs/YYYYMMDD_HHMMSS/
 - `--auto-continue`：跳过可自动判断的 Enter 确认，自动等待上传、生成图片、发送按钮和评估 JSON。
 - `--expected-candidates`：自动模式下期望等到的候选图数量，默认 4。
 - `--generation-timeout`：自动模式下等待图片生成的最长秒数，默认 1200。
+- `--generation-refresh-interval`：候选图长时间无进展时自动刷新当前 ChatGPT 会话，默认 90 秒；设为 0 关闭。
+- `--max-generation-refreshes`：单次生成最多自动刷新次数，默认 5。
+- `--candidate-settle-seconds`：生成已结束但图片少于预期时，确认结果稳定后继续的等待秒数，默认 12。
 - `--evaluation-timeout`：自动模式下等待评估 JSON 的最长秒数，默认 300。
 - `--upload-timeout`：自动模式下等待上传预览出现的最长秒数，默认 240。
 - `--upload-settle-seconds`：检测到上传预览后继续等待页面处理的秒数，默认 8。
