@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from prompt_templates import render_named_prompt
+from prompt_templates import VIDEO_COPY_PROMPT_TEMPLATE, render_named_prompt
 from webui.pipelines import DouyinCopyPipelineAdapter, pipeline_schemas
 
 
@@ -56,6 +56,13 @@ class DouyinCopyPipelineTests(unittest.TestCase):
             },
         )
         self.assertEqual(prompt, "禅缘古艺：东方工艺老物件 / 藏品留影")
+
+    def test_default_copy_template_encourages_rich_varied_angles(self):
+        self.assertIn("高端展陈版", VIDEO_COPY_PROMPT_TEMPLATE)
+        self.assertIn("来源故事版", VIDEO_COPY_PROMPT_TEMPLATE)
+        self.assertIn("器物细节版", VIDEO_COPY_PROMPT_TEMPLATE)
+        self.assertIn("不要机械三段式", VIDEO_COPY_PROMPT_TEMPLATE)
+        self.assertIn("不要每条都以“父亲早些年……”开头", VIDEO_COPY_PROMPT_TEMPLATE)
 
     def test_web_job_endpoint_accepts_single_video_input(self):
         import web_app
