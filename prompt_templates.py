@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-"""Shared editable prompt templates for the image pipeline."""
+"""Shared editable prompt templates for ChatGPT-assisted pipelines."""
 
 GENERATION_PROMPT_TEMPLATE = """你将基于我上传的 1 到 3 张参考图片生成新的图片。
 
@@ -58,5 +58,38 @@ EVALUATION_PROMPT_TEMPLATE = """请作为严格的商业摄影修片总监，评
 - index 必须按我上传图片的顺序从 1 到 {{count}}。"""
 
 
+VIDEO_COPY_PROMPT_TEMPLATE = """你是一名懂东方老物件、喜马拉雅艺术品和抖音直播转化的短视频文案策划。
+
+请基于我上传的视频，给直播间「{{brand_name}}」生成抖音引流文案。
+
+直播间主营：{{business_scope}}
+
+视频/藏品背景线索：
+{{video_context}}
+
+文案方向：
+- 先说明视频的拍摄来源或留影语境，例如“这是父亲早些年在某地收回这尊藏品时留下的一段影像/留影”。
+- 接着自然讲出收回这件藏品的经过、缘分、辗转、细节或当时的现场感。
+- 最后自然引流到直播间「{{brand_name}}」，邀请对喜马拉雅艺术品、东方工艺老物件感兴趣的人来直播间看细节、听故事。
+
+重要要求：
+- 必须先观察视频内容，再结合背景线索写，不要把视频里没有的明确材质、年代、产地、价格、人物身份说死。
+- 如果背景线索没有给出具体地点或年份，可以使用“早些年”“在外地”“从一位老朋友处”“辗转收回”等稳妥表达，不要硬编具体地名和年份。
+- 语气要像真人分享，克制、有故事感、有可信度，不要像硬广。
+- 适合抖音发布，可带 3 到 6 个相关话题标签。
+
+请输出：
+1. 标题 5 条，每条不超过 24 个字。
+2. 正文文案 3 条，分别为“故事感版”“温和引流版”“短促口播版”。
+3. 每条正文后附建议话题标签。"""
+
+
 def render_prompt(template, request, count):
     return str(template).replace("{{request}}", str(request)).replace("{{count}}", str(count))
+
+
+def render_named_prompt(template, values):
+    text = str(template)
+    for key, value in values.items():
+        text = text.replace("{{" + str(key) + "}}", str(value))
+    return text

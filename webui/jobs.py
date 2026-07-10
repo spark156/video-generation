@@ -89,6 +89,7 @@ class JobManager(object):
             "return_code": None,
             "error": None,
             "config": config,
+            "input_files": list(image_paths),
             "input_images": list(image_paths),
             "input_names": list(original_names),
             "artifacts": {},
@@ -205,7 +206,8 @@ class JobManager(object):
             job["started_at_epoch"] = time.time()
             self._write_job(job)
 
-        command = adapter.build_command(self.workspace, job["config"], job["input_images"])
+        input_paths = job.get("input_files") or job.get("input_images") or []
+        command = adapter.build_command(self.workspace, job["config"], input_paths)
         self._append_log(job_id, "[系统] 任务已启动。\n")
         try:
             process = self._start_process(command)

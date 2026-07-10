@@ -5,6 +5,7 @@ profiles/
 images/
 runs/
 video_runs/
+copy_runs/
 web_data/
 
 # Python caches and local environments.

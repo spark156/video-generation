@@ -18,6 +18,8 @@
     form: document.getElementById("jobForm"),
     imageInput: document.getElementById("imageInput"),
     uploadZone: document.getElementById("uploadZone"),
+    uploadFieldLabel: document.getElementById("uploadFieldLabel"),
+    uploadButtonLabel: document.getElementById("uploadButtonLabel"),
     imagePreviews: document.getElementById("imagePreviews"),
     imageCounter: document.getElementById("imageCounter"),
     requestInput: document.getElementById("requestInput"),
@@ -25,7 +27,12 @@
     pipelineOptions: document.getElementById("pipelineOptions"),
     generationPromptTemplateInput: document.getElementById("generationPromptTemplateInput"),
     evaluationPromptTemplateInput: document.getElementById("evaluationPromptTemplateInput"),
+    copyContextInput: document.getElementById("copyContextInput"),
+    copyBrandInput: document.getElementById("copyBrandInput"),
+    copyBusinessInput: document.getElementById("copyBusinessInput"),
+    copyPromptTemplateInput: document.getElementById("copyPromptTemplateInput"),
     resetPromptsButton: document.getElementById("resetPromptsButton"),
+    resetCopyPromptButton: document.getElementById("resetCopyPromptButton"),
     resolutionInput: document.getElementById("resolutionInput"),
     durationInput: document.getElementById("durationInput"),
     aspectRatioInput: document.getElementById("aspectRatioInput"),
@@ -48,6 +55,7 @@
     logOutput: document.getElementById("logOutput"),
     passedGrid: document.getElementById("passedGrid"),
     videoGrid: document.getElementById("videoGrid"),
+    copyTextOutput: document.getElementById("copyTextOutput"),
     passedCount: document.getElementById("passedCount"),
     videoCount: document.getElementById("videoCount"),
     cancelButton: document.getElementById("cancelButton"),
@@ -106,10 +114,42 @@
     elements.reuseGrokInput.checked = Boolean(defaults.reuse_current_grok_page);
     elements.generationPromptTemplateInput.value = defaults.generation_prompt_template || "";
     elements.evaluationPromptTemplateInput.value = defaults.evaluation_prompt_template || "";
+    elements.copyBrandInput.value = defaults.copy_brand_name || "禅缘古艺";
+    elements.copyBusinessInput.value = defaults.copy_business_scope || "喜马拉雅艺术品，东方工艺的老物件";
+    elements.copyContextInput.value = defaults.copy_context || "";
+    elements.copyPromptTemplateInput.value = defaults.copy_prompt_template || "";
   }
 
   function selectedPipeline() {
     return state.pipelines.find((item) => item.id === state.selectedPipelineId) || null;
+  }
+
+  function inputSpec() {
+    return selectedPipeline()?.input || {
+      label: "参考图片",
+      button_label: "选择图片",
+      accept: "image/png,image/jpeg,image/webp",
+      min_files: 1,
+      max_files: 3,
+      allowed_suffixes: [".png", ".jpg", ".jpeg", ".webp"],
+    };
+  }
+
+  function fileSuffix(file) {
+    const name = file?.name || "";
+    const dotIndex = name.lastIndexOf(".");
+    return dotIndex >= 0 ? name.slice(dotIndex).toLowerCase() : "";
+  }
+
+  function fileMatchesSpec(file, spec) {
+    const suffixes = new Set((spec.allowed_suffixes || []).map((item) => String(item).toLowerCase()));
+    if (suffixes.size && suffixes.has(fileSuffix(file))) return true;
+    const acceptParts = String(spec.accept || "").split(",").map((item) => item.trim()).filter(Boolean);
+    return acceptParts.some((part) => {
+      if (part.endsWith("/*")) return file.type.startsWith(part.slice(0, -1));
+      if (part.startsWith(".")) return fileSuffix(file) === part.toLowerCase();
+      return file.type === part;
+    });
   }
 
   function setPipelineMode(pipelineId) {
@@ -117,16 +157,33 @@
     const pipeline = selectedPipeline();
     const providers = pipeline?.providers || (pipelineId === "video_only" ? ["grok"] : ["chatgpt", "grok"]);
     document.querySelectorAll("[data-requires]").forEach((element) => {
-      element.classList.toggle("hidden", !providers.includes(element.dataset.requires));
+      const providerVisible = providers.includes(element.dataset.requires);
+      const allowedPipelines = (element.dataset.pipelines || "").split(/\s+/).filter(Boolean);
+      const pipelineVisible = !allowedPipelines.length || allowedPipelines.includes(pipelineId);
+      element.classList.toggle("hidden", !(providerVisible && pipelineVisible));
+    });
+    document.querySelectorAll("[data-pipelines]:not([data-requires])").forEach((element) => {
+      const allowedPipelines = (element.dataset.pipelines || "").split(/\s+/).filter(Boolean);
+      element.classList.toggle("hidden", allowedPipelines.length && !allowedPipelines.includes(pipelineId));
     });
     const labels = {
       full_video: "启动全流程",
       image_only: "开始生成图片",
       video_only: "开始生成视频",
+      douyin_copy: "生成引流文案",
     };
     elements.startButtonLabel.textContent = labels[pipelineId] || "启动任务";
-    elements.requestInput.required = providers.includes("chatgpt");
+    const spec = inputSpec();
+    elements.uploadFieldLabel.textContent = spec.label || "输入文件";
+    elements.uploadButtonLabel.textContent = spec.button_label || "选择文件";
+    elements.imageInput.accept = spec.accept || "";
+    elements.imageInput.multiple = Number(spec.max_files || 1) > 1;
+    state.selectedFiles = state.selectedFiles.filter((file) => fileMatchesSpec(file, spec)).slice(0, spec.max_files || 1);
+    elements.requestInput.required = pipelineId === "full_video" || pipelineId === "image_only";
+    elements.copyPromptTemplateInput.required = pipelineId === "douyin_copy";
+    elements.copyBrandInput.required = pipelineId === "douyin_copy";
     renderStages();
+    renderSelectedFiles();
   }
 
   function setBrowserStatus(element, status) {
@@ -178,38 +235,51 @@
   function renderSelectedFiles() {
     clearPreviewUrls();
     elements.imagePreviews.innerHTML = "";
+    const spec = inputSpec();
     state.selectedFiles.forEach((file, index) => {
       const url = URL.createObjectURL(file);
       state.previewUrls.push(url);
       const wrapper = document.createElement("div");
       wrapper.className = "image-preview";
-      const image = document.createElement("img");
-      image.src = url;
-      image.alt = file.name;
+      const isVideo = file.type.startsWith("video/") || fileMatchesSpec(file, {
+        allowed_suffixes: [".mp4", ".webm", ".mov", ".m4v", ".ogv", ".ts"],
+      });
+      const media = isVideo ? document.createElement("video") : document.createElement("img");
+      media.src = url;
+      media.title = file.name;
+      if (isVideo) {
+        media.controls = true;
+        media.muted = true;
+        media.preload = "metadata";
+      } else {
+        media.alt = file.name;
+      }
       const remove = document.createElement("button");
       remove.className = "remove-image";
       remove.type = "button";
-      remove.title = "移除图片";
+      remove.title = "移除文件";
       remove.setAttribute("aria-label", `移除 ${file.name}`);
       remove.textContent = "×";
       remove.addEventListener("click", () => {
         state.selectedFiles.splice(index, 1);
         renderSelectedFiles();
       });
-      wrapper.append(image, remove);
+      wrapper.append(media, remove);
       elements.imagePreviews.appendChild(wrapper);
     });
-    elements.imageCounter.textContent = `${state.selectedFiles.length} / 3`;
+    elements.imageCounter.textContent = `${state.selectedFiles.length} / ${spec.max_files || 1}`;
   }
 
   function acceptFiles(fileList) {
-    const images = Array.from(fileList).filter((file) => file.type.startsWith("image/"));
-    if (!images.length) {
-      showToast("请选择 PNG、JPG 或 WebP 图片。", true);
+    const spec = inputSpec();
+    const files = Array.from(fileList).filter((file) => fileMatchesSpec(file, spec));
+    if (!files.length) {
+      showToast(`请选择支持的${spec.label || "文件"}格式。`, true);
       return;
     }
-    state.selectedFiles = images.slice(0, 3);
-    if (images.length > 3) showToast("最多保留前 3 张图片。", true);
+    const maxFiles = Number(spec.max_files || 1);
+    state.selectedFiles = files.slice(0, maxFiles);
+    if (files.length > maxFiles) showToast(`最多保留前 ${maxFiles} 个${spec.label || "文件"}。`, true);
     renderSelectedFiles();
   }
 
@@ -298,7 +368,8 @@
     const artifacts = job.artifacts || {};
     const passed = artifacts.passed || [];
     const videos = artifacts.videos || [];
-    const signature = JSON.stringify([job.id, passed, videos]);
+    const copyText = artifacts.copy_text || "";
+    const signature = JSON.stringify([job.id, passed, videos, copyText]);
     elements.passedCount.textContent = passed.length;
     elements.videoCount.textContent = videos.length;
     if (signature === state.artifactSignature) return;
@@ -319,6 +390,8 @@
             <div class="media-card-footer"><span>视频 ${String(index + 1).padStart(2, "0")}</span><a href="${mediaUrl(job.id, "videos", index, true)}">下载</a></div>
           </article>`).join("")
       : '<div class="empty-result">暂无视频</div>';
+
+    elements.copyTextOutput.textContent = copyText || "暂无引流文案";
   }
 
   function renderJob(job) {
@@ -340,6 +413,7 @@
     elements.logOutput.innerHTML = '<span class="log-placeholder">等待任务日志</span>';
     elements.passedGrid.innerHTML = '<div class="empty-result">暂无合格图片</div>';
     elements.videoGrid.innerHTML = '<div class="empty-result">暂无视频</div>';
+    elements.copyTextOutput.textContent = "暂无引流文案";
     elements.passedCount.textContent = "0";
     elements.videoCount.textContent = "0";
     elements.cancelButton.classList.add("hidden");
@@ -384,20 +458,30 @@
   async function submitJob(event) {
     event.preventDefault();
     if (!state.selectedFiles.length) {
-      showToast("请先选择参考图片。", true);
+      const spec = inputSpec();
+      showToast(`请先选择${spec.label || "输入文件"}。`, true);
       return;
     }
     const pipeline = selectedPipeline();
     const providers = pipeline?.providers || ["chatgpt", "grok"];
-    if (providers.includes("chatgpt") && !elements.requestInput.value.trim()) {
+    if ((state.selectedPipelineId === "full_video" || state.selectedPipelineId === "image_only") && !elements.requestInput.value.trim()) {
       showToast("请填写图片生成诉求。", true);
       elements.requestInput.focus();
+      return;
+    }
+    if (state.selectedPipelineId === "douyin_copy" && !elements.copyPromptTemplateInput.value.trim()) {
+      showToast("请填写抖音文案 Prompt 模板。", true);
+      elements.copyPromptTemplateInput.focus();
       return;
     }
 
     const config = {
       request: elements.requestInput.value.trim(),
       video_prompt: elements.videoPromptInput.value.trim(),
+      copy_context: elements.copyContextInput.value.trim(),
+      copy_brand_name: elements.copyBrandInput.value.trim(),
+      copy_business_scope: elements.copyBusinessInput.value.trim(),
+      copy_prompt_template: elements.copyPromptTemplateInput.value.trim(),
       chatgpt_cdp_url: elements.chatgptCdpInput.value.trim(),
       grok_cdp_url: elements.grokCdpInput.value.trim(),
       resolution: elements.resolutionInput.value,
@@ -433,7 +517,7 @@
       const formData = new FormData();
       formData.append("pipeline_id", state.selectedPipelineId);
       formData.append("config", JSON.stringify(config));
-      state.selectedFiles.forEach((file) => formData.append("images", file, file.name));
+      state.selectedFiles.forEach((file) => formData.append("inputs", file, file.name));
       const payload = await api("/api/jobs", { method: "POST", body: formData });
       state.jobs.unshift(payload.job);
       showToast("任务已进入队列。")
@@ -499,13 +583,22 @@
       elements.evaluationPromptTemplateInput.value = state.defaults.evaluation_prompt_template || "";
       showToast("Prompt 模板已恢复默认。")
     });
+    elements.resetCopyPromptButton.addEventListener("click", () => {
+      elements.copyPromptTemplateInput.value = state.defaults.copy_prompt_template || "";
+      elements.copyBrandInput.value = state.defaults.copy_brand_name || "禅缘古艺";
+      elements.copyBusinessInput.value = state.defaults.copy_business_scope || "喜马拉雅艺术品，东方工艺的老物件";
+      showToast("抖音文案模板已恢复默认。")
+    });
     elements.cancelButton.addEventListener("click", cancelSelectedJob);
     elements.refreshStatusButton.addEventListener("click", checkBrowserStatus);
     elements.chatgptStatus.addEventListener("click", () => launchBrowser("chatgpt"));
     elements.grokStatus.addEventListener("click", () => launchBrowser("grok"));
     elements.newJobButton.addEventListener("click", () => {
       renderIdle();
-      (state.selectedPipelineId === "video_only" ? elements.videoPromptInput : elements.requestInput).focus();
+      const focusTarget = state.selectedPipelineId === "douyin_copy"
+        ? elements.copyContextInput
+        : (state.selectedPipelineId === "video_only" ? elements.videoPromptInput : elements.requestInput);
+      focusTarget.focus();
     });
 
     try {

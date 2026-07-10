@@ -9,7 +9,7 @@ import urllib.request
 from pathlib import Path
 
 
-VIDEO_SUFFIXES = {".mp4", ".webm", ".ogv", ".ts"}
+VIDEO_SUFFIXES = {".mp4", ".webm", ".mov", ".m4v", ".ogv", ".ts"}
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 
 
@@ -19,6 +19,12 @@ class PipelineAdapter(object):
     description = ""
     providers = []
     stages = []
+    input_label = "参考图片"
+    input_button_label = "选择图片"
+    input_accept = "image/png,image/jpeg,image/webp"
+    input_min_files = 1
+    input_max_files = 3
+    input_allowed_suffixes = IMAGE_SUFFIXES
 
     def schema(self):
         return {
@@ -27,6 +33,14 @@ class PipelineAdapter(object):
             "description": self.description,
             "providers": self.providers,
             "stages": self.stages,
+            "input": {
+                "label": self.input_label,
+                "button_label": self.input_button_label,
+                "accept": self.input_accept,
+                "min_files": self.input_min_files,
+                "max_files": self.input_max_files,
+                "allowed_suffixes": sorted(self.input_allowed_suffixes),
+            },
         }
 
     def validate(self, config, image_paths):
@@ -346,10 +360,123 @@ class VideoOnlyPipelineAdapter(FullVideoPipelineAdapter):
         }
 
 
+class DouyinCopyPipelineAdapter(PipelineAdapter):
+    pipeline_id = "douyin_copy"
+    name = "抖音引流文案"
+    description = "上传视频到 ChatGPT，为禅缘古艺直播间生成抖音引流文案"
+    providers = ["chatgpt"]
+    stages = [
+        {"id": "preflight", "label": "浏览器检查"},
+        {"id": "chatgpt_copy", "label": "文案生成"},
+        {"id": "complete", "label": "完成"},
+    ]
+    input_label = "成品视频"
+    input_button_label = "选择视频"
+    input_accept = "video/mp4,video/webm,video/quicktime,video/x-m4v,video/ogg"
+    input_min_files = 1
+    input_max_files = 1
+    input_allowed_suffixes = VIDEO_SUFFIXES
+
+    def validate(self, config, image_paths):
+        errors = []
+        if len(image_paths) != 1:
+            errors.append("请上传 1 个需要生成文案的视频。")
+        elif Path(image_paths[0]).suffix.lower() not in self.input_allowed_suffixes:
+            errors.append("请上传 MP4、WebM、MOV 或 M4V 视频。")
+        if not str(config.get("chatgpt_cdp_url") or "").strip():
+            errors.append("请填写 ChatGPT CDP 地址。")
+        if not str(config.get("copy_prompt_template") or "").strip():
+            errors.append("请填写抖音文案 Prompt 模板。")
+        return errors
+
+    def build_command(self, workspace, config, image_paths):
+        command = [
+            sys.executable,
+            "-u",
+            str(Path(workspace) / "chatgpt_video_copy_pipeline.py"),
+            "--cdp-url", config.get("chatgpt_cdp_url", "http://127.0.0.1:9333"),
+            "--video", str(image_paths[0]),
+            "--output-dir", str(config.get("copy_output_dir") or "copy_runs"),
+            "--brand-name", str(config.get("copy_brand_name") or "禅缘古艺"),
+            "--business-scope", str(config.get("copy_business_scope") or "喜马拉雅艺术品，东方工艺的老物件"),
+            "--upload-settle-seconds", str(config.get("copy_upload_settle_seconds") or 15),
+            "--response-timeout", str(config.get("copy_response_timeout") or 600),
+            "--auto-continue",
+        ]
+        video_context = str(config.get("copy_context") or "").strip()
+        prompt_template = str(config.get("copy_prompt_template") or "").strip()
+        if video_context:
+            command.extend(["--video-context", video_context])
+        if prompt_template:
+            command.extend(["--prompt-template", prompt_template])
+        return command
+
+    def preflight(self, config):
+        endpoint = config.get("chatgpt_cdp_url", "http://127.0.0.1:9333")
+        try:
+            with urllib.request.urlopen(endpoint.rstrip("/") + "/json/version", timeout=3) as response:
+                if response.status != 200:
+                    raise RuntimeError("HTTP {0}".format(response.status))
+            return []
+        except Exception as exc:
+            return ["ChatGPT 调试浏览器未就绪 ({0}): {1}".format(endpoint, exc)]
+
+    def detect_stage(self, line):
+        if "已提交视频文案提示词" in line or "自动等待 ChatGPT 文案回复" in line:
+            return "chatgpt_copy"
+        if "文案生成完成" in line:
+            return "complete"
+        return None
+
+    def collect_artifacts(self, workspace, config, started_at_epoch):
+        output_dir = Path(config.get("copy_output_dir") or "copy_runs")
+        if not output_dir.is_absolute():
+            output_dir = Path(workspace) / output_dir
+        markers = []
+        if output_dir.exists():
+            for marker in output_dir.glob("*/copy_result.json"):
+                try:
+                    if marker.stat().st_mtime >= started_at_epoch - 2:
+                        markers.append(marker)
+                except OSError:
+                    continue
+        if not markers:
+            return {"manifest": None, "passed": [], "failed": [], "needs_review": [], "videos": [], "copy_text": ""}
+        marker = max(markers, key=lambda path: path.stat().st_mtime)
+        run_dir = marker.parent
+        try:
+            payload = json.loads(marker.read_text(encoding="utf-8"))
+        except Exception:
+            payload = {}
+        return {
+            "manifest": str(marker.resolve()),
+            "copy_run_dir": str(run_dir.resolve()),
+            "copy_text": payload.get("copy_text") or "",
+            "copy_prompt_path": payload.get("prompt_path"),
+            "copy_response_path": payload.get("response_path"),
+            "passed": [],
+            "failed": [],
+            "needs_review": [],
+            "videos": self._files(run_dir / "input", VIDEO_SUFFIXES),
+            "summary": payload,
+        }
+
+    @staticmethod
+    def _files(directory, suffixes):
+        if not directory or not Path(directory).exists():
+            return []
+        return [
+            str(path.resolve())
+            for path in sorted(Path(directory).iterdir())
+            if path.is_file() and path.suffix.lower() in suffixes
+        ]
+
+
 PIPELINES = {
     FullVideoPipelineAdapter.pipeline_id: FullVideoPipelineAdapter(),
     ImageOnlyPipelineAdapter.pipeline_id: ImageOnlyPipelineAdapter(),
     VideoOnlyPipelineAdapter.pipeline_id: VideoOnlyPipelineAdapter(),
+    DouyinCopyPipelineAdapter.pipeline_id: DouyinCopyPipelineAdapter(),
 }
 
 

@@ -133,6 +133,38 @@ python .\grok_video_pipeline.py `
 
 如果你手动打开 `https://grok.com/imagine` 时看到的输入框选项和脚本启动时不同，优先使用 `--reuse-current-page`。它会复用你当前已经打开好的 Grok 页面，不会在每张图开始时重新跳转页面。
 
+## ChatGPT 视频生成抖音引流文案
+
+`chatgpt_video_copy_pipeline.py` 用于把成品视频上传到 ChatGPT，并生成「禅缘古艺」直播间的抖音引流文案。默认方向是：先讲视频拍摄来源或父亲早些年收回藏品时的留影，再讲收回经过和缘分，最后自然引流到直播间。
+
+```powershell
+python .\chatgpt_video_copy_pipeline.py `
+  --cdp-url http://127.0.0.1:9333 `
+  --video "C:\path\demo.mp4" `
+  --video-context "父亲早些年在外地从一位老朋友处辗转收回这尊藏品，当时留下了这段视频。" `
+  --auto-continue
+```
+
+常用参数：
+
+- `--video`：输入视频，支持 MP4、WebM、MOV、M4V 等常见格式。
+- `--video-context`：视频拍摄来源、藏品故事、收回经过等背景线索；如果不填，模板会要求 ChatGPT 不要硬编具体地点和年份。
+- `--brand-name`：直播间名称，默认 `禅缘古艺`。
+- `--business-scope`：主营方向，默认 `喜马拉雅艺术品，东方工艺的老物件`。
+- `--prompt-template`：自定义文案模板，支持 `{{brand_name}}`、`{{business_scope}}`、`{{video_context}}`。
+- `--response-timeout`：等待 ChatGPT 输出文案的最长秒数，默认 600。
+
+输出位于 `copy_runs/YYYYMMDD_HHMMSS/`：
+
+```text
+copy_runs/YYYYMMDD_HHMMSS/
+  input/
+  request.json
+  copy_prompt.txt
+  copy_response.txt
+  copy_result.json
+```
+
 ## 全流程自动化
 
 确保 ChatGPT 和 Grok 的两个 Chrome 窗口均已启动、登录并保持打开后，可以用 `full_video_pipeline.py` 一次完成生图、审核、筛选、图生视频和下载：
@@ -176,6 +208,7 @@ python web_app.py --host 127.0.0.1 --port 7860
 浏览器访问 `http://127.0.0.1:7860`。网页支持：
 
 - 上传 1 到 3 张参考图片并配置两阶段提示词。
+- 单独上传成品视频，让 ChatGPT 生成「禅缘古艺」抖音引流文案，并在页面查看结果。
 - 检查或启动 ChatGPT、Grok 调试 Chrome。
 - 串行任务队列、实时日志、阶段进度和停止任务。
 - 历史任务恢复、合格图片预览、视频播放与下载。

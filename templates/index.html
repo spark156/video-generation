@@ -68,30 +68,34 @@
                   <input type="radio" name="pipeline" value="video_only">
                   <span><strong>仅视频</strong><small>上传图片直接生成视频</small></span>
                 </label>
+                <label class="pipeline-option">
+                  <input type="radio" name="pipeline" value="douyin_copy">
+                  <span><strong>引流文案</strong><small>上传视频生成抖音文案</small></span>
+                </label>
               </div>
             </div>
 
             <div class="form-section">
-              <label class="field-label" for="imageInput">参考图片 <span id="imageCounter">0 / 3</span></label>
+              <label class="field-label" for="imageInput"><span id="uploadFieldLabel">参考图片</span> <span id="imageCounter">0 / 3</span></label>
               <label class="upload-zone" id="uploadZone" for="imageInput">
                 <input id="imageInput" name="images" type="file" accept="image/png,image/jpeg,image/webp" multiple>
                 <span class="upload-plus" aria-hidden="true">＋</span>
-                <span>选择图片</span>
+                <span id="uploadButtonLabel">选择图片</span>
               </label>
               <div class="image-previews" id="imagePreviews"></div>
             </div>
 
-            <div class="form-section" data-requires="chatgpt">
+            <div class="form-section" data-requires="chatgpt" data-pipelines="full_video image_only">
               <label class="field-label" for="requestInput">图片生成诉求</label>
               <textarea id="requestInput" rows="5" required placeholder="场景、光线、构图、真实感与尺寸要求"></textarea>
             </div>
 
-            <div class="form-section" data-requires="grok">
+            <div class="form-section" data-requires="grok" data-pipelines="full_video video_only">
               <label class="field-label" for="videoPromptInput">视频运动要求</label>
               <textarea id="videoPromptInput" rows="3" placeholder="镜头运动、主体动作与光线变化"></textarea>
             </div>
 
-            <div class="form-section compact-section" data-requires="grok">
+            <div class="form-section compact-section" data-requires="grok" data-pipelines="full_video video_only">
               <div class="three-column-fields">
                 <label class="compact-field">
                   <span>分辨率</span>
@@ -120,7 +124,25 @@
               </div>
             </div>
 
-            <div class="form-section prompt-editor-section" data-requires="chatgpt">
+            <div class="form-section" data-requires="chatgpt" data-pipelines="douyin_copy">
+              <label class="field-label" for="copyContextInput">视频来源与藏品故事线索</label>
+              <textarea id="copyContextInput" rows="5" placeholder="例如：父亲早些年在某地从老朋友处收回这尊藏品，当时留下了这段视频；可补充地点、人物关系、收回经过、想强调的细节。"></textarea>
+            </div>
+
+            <div class="form-section compact-section" data-requires="chatgpt" data-pipelines="douyin_copy">
+              <div class="two-column-fields">
+                <label class="compact-field">
+                  <span>直播间名称</span>
+                  <input id="copyBrandInput" type="text" spellcheck="false">
+                </label>
+                <label class="compact-field">
+                  <span>主营方向</span>
+                  <input id="copyBusinessInput" type="text" spellcheck="false">
+                </label>
+              </div>
+            </div>
+
+            <div class="form-section prompt-editor-section" data-requires="chatgpt" data-pipelines="full_video image_only">
               <div class="prompt-editor-heading">
                 <div>
                   <span class="field-label">Prompt 模板</span>
@@ -138,6 +160,20 @@
               </label>
             </div>
 
+            <div class="form-section prompt-editor-section" data-requires="chatgpt" data-pipelines="douyin_copy">
+              <div class="prompt-editor-heading">
+                <div>
+                  <span class="field-label">抖音文案 Prompt 模板</span>
+                  <p>可使用 <code>{% raw %}{{brand_name}}{% endraw %}</code>、<code>{% raw %}{{business_scope}}{% endraw %}</code> 和 <code>{% raw %}{{video_context}}{% endraw %}</code> 变量。</p>
+                </div>
+                <button class="text-button" id="resetCopyPromptButton" type="button">恢复默认</button>
+              </div>
+              <label class="prompt-field" for="copyPromptTemplateInput">
+                <span>引流文案 Prompt</span>
+                <textarea id="copyPromptTemplateInput" rows="14" spellcheck="false"></textarea>
+              </label>
+            </div>
+
             <details class="advanced-settings">
               <summary>高级设置</summary>
               <div class="advanced-grid">
@@ -149,11 +185,11 @@
                   <span>Grok CDP</span>
                   <input id="grokCdpInput" type="url" spellcheck="false">
                 </label>
-                <label class="compact-field" data-requires="chatgpt">
+                <label class="compact-field" data-requires="chatgpt" data-pipelines="full_video image_only">
                   <span>候选图</span>
                   <input id="candidateCountInput" type="number" min="1" max="8" value="4">
                 </label>
-                <label class="toggle-field" data-requires="chatgpt">
+                <label class="toggle-field" data-requires="chatgpt" data-pipelines="full_video image_only">
                   <input id="partialCandidatesInput" type="checkbox">
                   <span class="toggle-control" aria-hidden="true"></span>
                   <span>允许部分候选图</span>
@@ -194,6 +230,7 @@
             <button class="tab-button active" data-tab="log" type="button" role="tab">运行日志</button>
             <button class="tab-button" data-tab="passed" type="button" role="tab">合格图片 <span id="passedCount">0</span></button>
             <button class="tab-button" data-tab="videos" type="button" role="tab">视频 <span id="videoCount">0</span></button>
+            <button class="tab-button" data-tab="copy" type="button" role="tab">引流文案</button>
           </div>
 
           <div class="tab-content active" id="logPanel" data-panel="log">
@@ -204,6 +241,9 @@
           </div>
           <div class="tab-content" id="videosPanel" data-panel="videos">
             <div class="video-grid" id="videoGrid"></div>
+          </div>
+          <div class="tab-content" id="copyPanel" data-panel="copy">
+            <pre class="copy-output" id="copyTextOutput"><span class="log-placeholder">暂无引流文案</span></pre>
           </div>
         </section>
       </div>
