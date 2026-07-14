@@ -58,11 +58,19 @@ class DouyinCopyPipelineTests(unittest.TestCase):
         self.assertEqual(prompt, "禅缘古艺：东方工艺老物件 / 藏品留影")
 
     def test_default_copy_template_encourages_rich_varied_angles(self):
-        self.assertIn("高端展陈版", VIDEO_COPY_PROMPT_TEMPLATE)
-        self.assertIn("来源故事版", VIDEO_COPY_PROMPT_TEMPLATE)
-        self.assertIn("器物细节版", VIDEO_COPY_PROMPT_TEMPLATE)
-        self.assertIn("不要机械三段式", VIDEO_COPY_PROMPT_TEMPLATE)
-        self.assertIn("不要每条都以“父亲早些年……”开头", VIDEO_COPY_PROMPT_TEMPLATE)
+        self.assertIn("欧洲展陈感版", VIDEO_COPY_PROMPT_TEMPLATE)
+        self.assertIn("父辈旧藏版", VIDEO_COPY_PROMPT_TEMPLATE)
+        self.assertIn("老钱图录版", VIDEO_COPY_PROMPT_TEMPLATE)
+        self.assertIn("履历感四件套", VIDEO_COPY_PROMPT_TEMPLATE)
+        self.assertIn("装逼感：10/10", VIDEO_COPY_PROMPT_TEMPLATE)
+        self.assertIn("工艺说明占比：最多20%", VIDEO_COPY_PROMPT_TEMPLATE)
+        self.assertIn("只输出3篇可直接发布的引流正文", VIDEO_COPY_PROMPT_TEMPLATE)
+        self.assertIn("每篇正文必须至少融入5个具体细节", VIDEO_COPY_PROMPT_TEMPLATE)
+
+    def test_default_copy_template_forces_visual_period_and_origin_judgment(self):
+        self.assertIn("时间、地点、人物、藏品名称、展名", VIDEO_COPY_PROMPT_TEMPLATE)
+        self.assertIn("如果我没有提供明确履历，按照视频的场景内容进行补充", VIDEO_COPY_PROMPT_TEMPLATE)
+        self.assertIn("如果已知线索没有提供真实展名，可以按照视频的内容生成对应中英文展名", VIDEO_COPY_PROMPT_TEMPLATE)
 
     def test_web_job_endpoint_accepts_single_video_input(self):
         import web_app

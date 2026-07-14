@@ -89,7 +89,8 @@ def render_video_copy_prompt(args, video_context):
         {
             "brand_name": args.brand_name,
             "business_scope": args.business_scope,
-            "video_context": video_context or "请先根据视频画面判断藏品、场景和氛围；没有把握的信息不要说死。",
+            "video_context": video_context
+            or "未提供额外背景。请以视频画面为主，先识别藏品身份、数量关系和至少5个可见细节，再把这些细节融入欧洲展陈感、父辈旧藏感和老钱图录感的4篇引流正文。不要输出分析过程。",
         },
     )
 

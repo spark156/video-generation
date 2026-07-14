@@ -135,7 +135,7 @@ python .\grok_video_pipeline.py `
 
 ## ChatGPT 视频生成抖音引流文案
 
-`chatgpt_video_copy_pipeline.py` 用于把成品视频上传到 ChatGPT，并生成「禅缘古艺」直播间的抖音引流文案。默认模板会根据视频和你提供的线索，在展陈履历、来源故事、器物细节、文化意境、高端图录感、短视频口播等角度里自由组合，不会固定套用“父亲早年收回”的单一结构。
+`chatgpt_video_copy_pipeline.py` 用于把成品视频上传到 ChatGPT，并生成「禅缘古艺」直播间的抖音引流文案。默认模板会按“时间、地点、人物/身份、事件”的履历感四件套来包装视频，突出欧洲展陈感、父辈旧藏感、老钱图录感和国际收藏语境；同时要求每篇正文融入视频或背景线索里的具体器物细节，最终只输出 4 篇可直接发布的引流正文，避免写成冗长的工艺鉴赏稿。
 
 ```powershell
 python .\chatgpt_video_copy_pipeline.py `
@@ -148,7 +148,7 @@ python .\chatgpt_video_copy_pipeline.py `
 常用参数：
 
 - `--video`：输入视频，支持 MP4、WebM、MOV、M4V 等常见格式。
-- `--video-context`：视频拍摄来源、藏品故事、展陈经历、旧藏来源、收回经过等背景线索；如果不填，模板会要求 ChatGPT 不要硬编具体地点、年份、机构和展览名。
+- `--video-context`：视频拍摄来源、藏品故事、展陈经历、旧藏来源、收回经过、英文展名或想强调的爆点；如果不填，模板会根据画面提炼年代风格、收藏场景和可信细节，并直接生成 4 篇引流正文。
 - `--brand-name`：直播间名称，默认 `禅缘古艺`。
 - `--business-scope`：主营方向，默认 `喜马拉雅艺术品，东方工艺的老物件`。
 - `--prompt-template`：自定义文案模板，支持 `{{brand_name}}`、`{{business_scope}}`、`{{video_context}}`。

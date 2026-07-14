@@ -377,11 +377,119 @@ def find_first_visible(page, selectors, timeout_ms):
     return None
 
 
+def count_user_messages(page):
+    try:
+        return int(page.evaluate(
+            """() => document.querySelectorAll("[data-message-author-role='user']").length"""
+        ) or 0)
+    except Exception:
+        return 0
+
+
+def count_assistant_messages(page):
+    try:
+        return int(page.evaluate(
+            """() => document.querySelectorAll("[data-message-author-role='assistant']").length"""
+        ) or 0)
+    except Exception:
+        return 0
+
+
+def collect_image_srcs(page):
+    try:
+        return set((info.get("src") or "") for info in collect_image_infos(page) if info.get("src"))
+    except Exception:
+        return set()
+
+
+def has_new_non_user_image(page, before_image_srcs, min_size=96):
+    try:
+        for info in collect_image_infos(page):
+            src = info.get("src") or ""
+            if not src or src in before_image_srcs:
+                continue
+            if (info.get("role") or "").lower() == "user":
+                continue
+            width = int(info.get("width") or 0)
+            height = int(info.get("height") or 0)
+            client_width = int(info.get("clientWidth") or 0)
+            client_height = int(info.get("clientHeight") or 0)
+            if max(width, height, client_width, client_height) >= min_size:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def wait_for_submit_confirmation(
+    page,
+    prompt_box,
+    expected_prompt,
+    before_user_count,
+    before_assistant_count=None,
+    before_image_srcs=None,
+    timeout_seconds=12,
+):
+    deadline = time.time() + timeout_seconds
+    last_prompt = ""
+    before_image_srcs = before_image_srcs or set()
+
+    while time.time() < deadline:
+        if count_user_messages(page) > before_user_count:
+            return True, "user-message"
+
+        if before_assistant_count is not None and count_assistant_messages(page) > before_assistant_count:
+            return True, "assistant-message"
+
+        if before_image_srcs and has_new_non_user_image(page, before_image_srcs):
+            return True, "new-generated-image"
+
+        if is_generation_active(page):
+            return True, "generation-active"
+
+        try:
+            current_box = wait_for_prompt_box(page)
+            last_prompt = read_prompt_text(current_box)
+            if not prompt_text_matches(last_prompt, expected_prompt):
+                normalized = normalize_prompt_text(last_prompt)
+                if not normalized or len(normalized) < max(20, len(normalize_prompt_text(expected_prompt)) // 4):
+                    return True, "composer-cleared"
+                prompt_box = current_box
+        except Exception:
+            pass
+
+        time.sleep(0.5)
+
+    return False, last_prompt
+
+
 def submit_prompt(page, prompt_box, args, expected_prompt):
     deadline = time.time() + args.send_timeout
     last_seen_button = None
+    last_submit_error = None
+    submit_attempted = False
+    before_user_count = None
+    before_assistant_count = None
+    before_image_srcs = None
 
     while time.time() < deadline:
+        if submit_attempted:
+            confirmed, reason = wait_for_submit_confirmation(
+                page,
+                prompt_box,
+                expected_prompt,
+                before_user_count,
+                before_assistant_count,
+                before_image_srcs,
+                timeout_seconds=1,
+            )
+            if confirmed:
+                print("已提交提示词，字符数: {0}，确认方式: {1}".format(
+                    len(expected_prompt),
+                    reason,
+                ))
+                return True
+
         button = find_first_visible(page, SEND_SELECTORS, 2500)
         if button is not None:
             last_seen_button = button
@@ -395,19 +503,46 @@ def submit_prompt(page, prompt_box, args, expected_prompt):
                                 len(expected_prompt), len(actual_prompt or "")
                             )
                         )
-                    button.click(timeout=5000)
-                    print("已提交提示词，字符数: {0}".format(len(expected_prompt)))
-                    return True
+                    before_user_count = count_user_messages(page)
+                    before_assistant_count = count_assistant_messages(page)
+                    before_image_srcs = collect_image_srcs(page)
+                    submit_attempted = True
+                    try:
+                        button.click(timeout=5000)
+                    except Exception as exc:
+                        last_submit_error = exc
+
+                    confirmed, reason = wait_for_submit_confirmation(
+                        page,
+                        prompt_box,
+                        expected_prompt,
+                        before_user_count,
+                        before_assistant_count,
+                        before_image_srcs,
+                    )
+                    if confirmed:
+                        print("已提交提示词，字符数: {0}，确认方式: {1}".format(
+                            len(expected_prompt),
+                            reason,
+                        ))
+                        return True
             except RuntimeError:
                 raise
-            except Exception:
-                pass
+            except Exception as exc:
+                last_submit_error = exc
+                if is_generation_active(page):
+                    print("已提交提示词，字符数: {0}，确认方式: generation-active-after-error".format(
+                        len(expected_prompt)
+                    ))
+                    return True
         time.sleep(1)
 
     if args.auto_continue:
+        detail = " 最近一次点击错误: {0}".format(last_submit_error) if last_submit_error else ""
         raise RuntimeError(
-            "发送按钮在 {0} 秒内没有变为可用，可能是图片仍在上传或页面状态异常。".format(
-                args.send_timeout
+            "发送按钮在 {0} 秒内没有完成提交确认，可能是图片仍在上传、页面吞掉点击或 ChatGPT 状态异常。{1}".format(
+                args.send_timeout,
+                detail,
             )
         )
 

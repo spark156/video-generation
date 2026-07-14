@@ -33,14 +33,17 @@ class FakePromptBox(object):
 
 
 class FakeButton(object):
-    def __init__(self):
+    def __init__(self, fail_click=False):
         self.clicked = False
+        self.fail_click = fail_click
 
     def is_enabled(self, **_kwargs):
         return True
 
     def click(self, **_kwargs):
         self.clicked = True
+        if self.fail_click:
+            raise Exception("button detached after click")
 
 
 class MissingLocator(object):
@@ -97,6 +100,36 @@ class PromptSubmissionTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "已阻止仅发送图片"):
                 pipeline.submit_prompt(object(), box, args, "完整提示词")
         self.assertFalse(button.clicked)
+
+    def test_submit_accepts_click_error_when_submission_confirmed(self):
+        box = FakePromptBox(persist=True)
+        box.value = "完整提示词"
+        button = FakeButton(fail_click=True)
+        args = SimpleNamespace(send_timeout=2, auto_continue=True)
+        with patch.object(pipeline, "find_first_visible", return_value=button), patch.object(
+            pipeline, "wait_for_prompt_box", return_value=box
+        ), patch.object(pipeline, "count_user_messages", return_value=1), patch.object(
+            pipeline, "wait_for_submit_confirmation", return_value=(True, "generation-active")
+        ):
+            self.assertTrue(pipeline.submit_prompt(object(), box, args, "完整提示词"))
+        self.assertTrue(button.clicked)
+
+    def test_submit_keeps_checking_after_initial_unconfirmed_click(self):
+        box = FakePromptBox(persist=True)
+        box.value = "完整提示词"
+        button = FakeButton()
+        args = SimpleNamespace(send_timeout=2, auto_continue=True)
+        with patch.object(pipeline, "find_first_visible", side_effect=[button, None]), patch.object(
+            pipeline, "wait_for_prompt_box", return_value=box
+        ), patch.object(pipeline, "count_user_messages", return_value=1), patch.object(
+            pipeline, "count_assistant_messages", return_value=1
+        ), patch.object(pipeline, "collect_image_srcs", return_value={"uploaded-preview"}), patch.object(
+            pipeline,
+            "wait_for_submit_confirmation",
+            side_effect=[(False, ""), (True, "new-generated-image")],
+        ), patch.object(pipeline.time, "sleep", return_value=None):
+            self.assertTrue(pipeline.submit_prompt(object(), box, args, "完整提示词"))
+        self.assertTrue(button.clicked)
 
     def test_refresh_reloads_same_conversation(self):
         page = CandidatePage()
